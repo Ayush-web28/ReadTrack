@@ -7,13 +7,17 @@ through SQLAlchemy (a library that lets us use Python classes instead of
 writing raw SQL).
 """
 
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 # Where the database lives. "sqlite:///./readtrack.db" = a file called
 # readtrack.db in the folder you start the server from.
-# (Later, swapping to PostgreSQL only means changing this one line.)
-DATABASE_URL = "sqlite:///./readtrack.db"
+# We read it from the DATABASE_URL environment variable first, so tests (and
+# later Docker) can point at a different database without editing code.
+# (Swapping to PostgreSQL later only means changing this value.)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./readtrack.db")
 
 # The ENGINE is the actual connection to the database.
 # check_same_thread=False is a SQLite-only setting: FastAPI may handle one

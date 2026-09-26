@@ -42,6 +42,18 @@ def get_author(author_id: int, db: Session = Depends(get_db)):
     return author
 
 
+@router.get("/{author_id}/books", response_model=list[schemas.BookOut])
+def list_author_books(author_id: int, db: Session = Depends(get_db)):
+    """
+    NESTED RESOURCE URL: /authors/3/books reads as "the books of author 3".
+    author.books is the relationship defined in models.py.
+    """
+    author = db.get(models.Author, author_id)
+    if author is None:
+        raise HTTPException(status_code=404, detail="Author not found")
+    return sorted(author.books, key=lambda b: b.title)
+
+
 # status_code=201 means "Created". It is the correct success code for POST.
 @router.post("", response_model=schemas.AuthorOut, status_code=status.HTTP_201_CREATED)
 def create_author(payload: schemas.AuthorCreate, db: Session = Depends(get_db)):

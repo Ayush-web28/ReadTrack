@@ -97,6 +97,11 @@ class Review(Base):
     book: Mapped[Book] = relationship(back_populates="reviews")
     user: Mapped[User] = relationship(back_populates="reviews")
 
+    @property
+    def user_name(self) -> str:
+        """Lets ReviewOut show the reviewer's name without exposing the User row."""
+        return self.user.name
+
 
 class ShelfEntry(Base):
     """A user's relationship with a book: want to read it? reading it? done?"""

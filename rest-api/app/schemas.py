@@ -13,7 +13,31 @@ Naming pattern used for each resource (e.g. Author):
     AuthorOut    -> what the API sends BACK             (responses)
 """
 
+from datetime import datetime
+from typing import Generic, Literal, TypeVar
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# The three allowed reading statuses. Literal[...] makes Pydantic reject
+# anything else (e.g. "done") with a 422 automatically.
+ShelfStatus = Literal["to-read", "reading", "finished"]
+
+T = TypeVar("T")
+
+
+class Page(BaseModel, Generic[T]):
+    """
+    A generic PAGINATED response. Page[BookOut] means "a page of books".
+    Instead of returning a bare list (which could be thousands of rows),
+    list endpoints return one slice plus the info a client needs to ask
+    for the next slice.
+    """
+
+    items: list[T]
+    total: int    # how many rows match in ALL pages
+    page: int     # current page number (starts at 1)
+    limit: int    # page size
+    pages: int    # total number of pages
 
 
 # ---------------------------------------------------------------- Authors
@@ -69,3 +93,59 @@ class BookOut(BaseModel):
     page_count: int | None
     published_year: int | None
     description: str | None
+    # Computed from the reviews table (not stored on the book itself).
+    # Defaults let this schema also be used where no rating info is loaded.
+    avg_rating: float | None = None
+    review_count: int = 0
+
+
+# ---------------------------------------------------------------- Reviews
+class ReviewCreate(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewUpdate(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    rating: int
+    comment: str | None
+    created_at: datetime
+    book_id: int
+    user_id: int
+    user_name: str    # comes from the Review.user_name property in models.py
+
+
+# ------------------------------------------------------------------ Shelf
+class ShelfStatusIn(BaseModel):
+    status: ShelfStatus
+
+
+class ProgressIn(BaseModel):
+    current_page: int = Field(ge=0)
+
+
+class ShelfEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: ShelfStatus
+    current_page: int
+    book_id: int
+    book: BookOut     # nested object: the shelf entry embeds its book
+
+
+# ------------------------------------------------------------------ Stats
+class StatsOut(BaseModel):
+    to_read: int
+    reading: int
+    finished: int
+    pages_read: int
+    reviews_written: int
+    average_rating_given: float | None
