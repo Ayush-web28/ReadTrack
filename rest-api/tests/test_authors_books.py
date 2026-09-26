@@ -90,3 +90,16 @@ def test_list_pagination(client, auth):
     assert [b["title"] for b in page2["items"]] == ["Gamma"]
     assert client.get("/books?page=0").status_code == 422
     assert client.get("/books?limit=1000").status_code == 422   # page size is capped
+
+
+def test_batch_lookup_by_ids_and_author_ids(client, auth):
+    a1 = client.post("/authors", json={"name": "A1"}, headers=auth).json()["id"]
+    a2 = client.post("/authors", json={"name": "A2"}, headers=auth).json()["id"]
+    b = [client.post("/books", json={"title": t, "author_id": a}, headers=auth).json()["id"]
+         for t, a in [("One", a1), ("Two", a1), ("Three", a2)]]
+
+    assert _titles(client, f"/books?ids={b[0]},{b[2]}") == ["One", "Three"]
+    assert _titles(client, f"/books?author_ids={a1}") == ["One", "Two"]
+    assert [a["name"] for a in client.get(f"/authors?ids={a2}").json()] == ["A2"]
+    assert client.get("/authors?ids=1,x").status_code == 422
+    assert client.get("/books?ids=abc").status_code == 422

@@ -11,12 +11,13 @@ CRUD -> HTTP verb mapping used here:
     Delete -> DELETE /authors/{id}
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..query_utils import parse_ids
 from ..dependencies import get_current_user
 
 # prefix: every route below automatically starts with /authors
@@ -27,11 +28,17 @@ router = APIRouter(prefix="/authors", tags=["Authors"])
 
 
 @router.get("", response_model=list[schemas.AuthorOut])
-def list_authors(db: Session = Depends(get_db)):
-    """List all authors."""
+def list_authors(
+    db: Session = Depends(get_db),
+    ids: str | None = Query(default=None, description="Only these author ids, e.g. 1,2,3"),
+):
+    """List all authors, or only the given ids (batch lookup)."""
     # select(Author) is SQLAlchemy for: SELECT * FROM authors
     # .scalars().all() turns the result rows into a list of Author objects.
-    return db.execute(select(models.Author).order_by(models.Author.name)).scalars().all()
+    stmt = select(models.Author).order_by(models.Author.name)
+    if (author_ids := parse_ids(ids, "ids")) is not None:
+        stmt = stmt.where(models.Author.id.in_(author_ids))
+    return db.execute(stmt).scalars().all()
 
 
 @router.get("/{author_id}", response_model=schemas.AuthorOut)

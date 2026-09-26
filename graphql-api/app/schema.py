@@ -16,14 +16,19 @@ STRAWBERRY basics used here:
 
 Every resolver receives `info`; info.context.rest is the REST client (rest_client.py).
 
-NOTE (Phase 5): resolvers here are deliberately NAIVE, one REST call per object.
-That is easy to read, but causes the "N+1 problem" that Phase 6 fixes.
+N+1 FIX (Phase 6): relationship resolvers (Book.author, Author.books,
+ShelfEntry.book) do not call REST directly. They ask a DataLoader
+(info.context.loaders, see loaders.py) which BATCHES all lookups made during
+one query into a single REST request. Book.reviews is still one call per book,
+because each book needs its own "last N reviews" (see NOTES.md).
 """
 
 from enum import Enum
 
 import strawberry
 from strawberry.types import Info
+
+from .extensions import RestCallCounter
 
 # ---------------------------------------------------------------- enums
 
@@ -90,7 +95,9 @@ class Book:
     @strawberry.field
     async def author(self, info: Info) -> "Author":
         # Runs only if the query includes `author { ... }`.
-        data = await info.context.rest.get(f"/authors/{self.author_id}")
+        # .load() does NOT call REST immediately: it queues the id, and the
+        # loader fetches all queued ids together (GET /authors?ids=1,2,3).
+        data = await info.context.loaders.author.load(self.author_id)
         return Author.from_rest(data)
 
     @strawberry.field
@@ -112,7 +119,7 @@ class Author:
 
     @strawberry.field
     async def books(self, info: Info) -> list[Book]:
-        data = await info.context.rest.get(f"/authors/{self.id}/books")
+        data = await info.context.loaders.books_by_author.load(int(self.id))
         return [Book.from_rest(b) for b in data]
 
 
@@ -144,7 +151,7 @@ class ShelfEntry:
 
     @strawberry.field
     async def book(self, info: Info) -> Book:
-        data = await info.context.rest.get(f"/books/{self.book_id}")
+        data = await info.context.loaders.book.load(self.book_id)
         return Book.from_rest(data)
 
 
@@ -285,4 +292,4 @@ class Mutation:
         return True
 
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+schema = strawberry.Schema(query=Query, mutation=Mutation, extensions=[RestCallCounter])

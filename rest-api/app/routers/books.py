@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..query_utils import parse_ids
 from ..dependencies import get_current_user
 
 # Reading is public. Creating, editing and deleting need a valid token:
@@ -79,6 +80,9 @@ def list_books(
     # and lets us add validation and documentation.
     genre: str | None = Query(default=None, description="Exact genre, e.g. scifi"),
     author_id: int | None = Query(default=None),
+    # BATCH filters (comma-separated), used by the GraphQL gateway to avoid N+1:
+    ids: str | None = Query(default=None, description="Only these book ids, e.g. 1,2,3"),
+    author_ids: str | None = Query(default=None, description="Books of any of these authors, e.g. 1,2"),
     search: str | None = Query(default=None, description="Text contained in the title"),
     sort: str = Query(default="title", description="title, published_year, page_count, avg_rating, review_count. Prefix with - for descending"),
     page: int = Query(default=1, ge=1),
@@ -93,6 +97,10 @@ def list_books(
         stmt = stmt.where(models.Book.author_id == author_id)
     if search:
         stmt = stmt.where(models.Book.title.ilike(f"%{search}%"))   # case-insensitive LIKE
+    if (book_ids := parse_ids(ids, "ids")) is not None:
+        stmt = stmt.where(models.Book.id.in_(book_ids))               # WHERE id IN (1, 2, 3)
+    if (author_id_list := parse_ids(author_ids, "author_ids")) is not None:
+        stmt = stmt.where(models.Book.author_id.in_(author_id_list))
 
     # --- TOTAL: count matching rows BEFORE slicing them into pages.
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()

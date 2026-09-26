@@ -92,3 +92,35 @@ Every test gets a fresh in-memory database via a dependency override (see `tests
 The suite takes ~45 s mostly because bcrypt is deliberately slow on every registration.
 
 Read the tests as documentation of the API's rules: each test name describes one behavior.
+
+---
+
+# Phase 6: DataLoader (fixing N+1)
+
+New: `app/loaders.py`, `app/extensions.py`. Changed: `schema.py` (relationship resolvers use loaders),
+`main.py` (each request gets its own `Loaders`). REST gained `GET /books?ids=&author_ids=` and
+`GET /authors?ids=` so the loaders have something to batch against.
+
+## Measured result
+Query `{ books(limit: 10) { items { title author { name } } } }` against a real REST API
+(10 books, 5 authors):
+
+| Version | REST calls |
+|---|---|
+| Phase 5 (naive resolvers) | **11** (1 list + 10 author lookups) |
+| Phase 6 (DataLoader) | **2** (1 list + 1 batched `GET /authors?ids=...`) |
+
+That is an 82% reduction, and the gap grows with page size (N=100: 101 calls vs 2).
+
+Every response now includes the count: `"extensions": {"restCalls": 2}`. Try it in GraphiQL
+(open the response's extensions) or with curl and compare a query with and without `author`.
+
+## How it works
+1. `Book.author` calls `loaders.author.load(3)`. It does not hit REST yet; the key is queued.
+2. When the current batch of resolvers has all asked, the loader calls `_load_authors([3, 5, ...])` once.
+3. Results are matched back to each caller by key. Repeated keys are deduplicated and cached for the request.
+
+## Still not batched (on purpose)
+`Book.reviews(last: N)` makes one REST call per book. Batching it needs a REST endpoint that returns
+"last N reviews for each of these books", which is a bigger API change than this phase warrants.
+Knowing exactly where N+1 remains is part of the exercise.

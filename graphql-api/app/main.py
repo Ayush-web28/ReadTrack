@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI, Request
 from strawberry.fastapi import BaseContext, GraphQLRouter
 
+from .loaders import Loaders
 from .rest_client import REST_API_URL, RestClient
 from .schema import schema
 
@@ -29,6 +30,7 @@ class Context(BaseContext):
     def __init__(self, rest: RestClient):
         super().__init__()
         self.rest = rest
+        self.loaders = Loaders(rest)   # fresh DataLoaders (and caches) for every request
 
 
 @asynccontextmanager
