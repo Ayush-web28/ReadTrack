@@ -1,5 +1,8 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
-pydantic
+pydantic[email]
 httpx
+pyjwt
+bcrypt
+python-multipart

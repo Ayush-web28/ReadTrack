@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..dependencies import get_current_user
 
+# Reading is public. Creating, editing and deleting need a valid token:
+# dependencies=[Depends(get_current_user)] on a route runs the security guard first.
 router = APIRouter(prefix="/books", tags=["Books"])
 
 
@@ -126,7 +129,12 @@ def get_book(book_id: int, db: Session = Depends(get_db)):
     return _to_out(*row)
 
 
-@router.post("", response_model=schemas.BookOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=schemas.BookOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 def create_book(payload: schemas.BookCreate, db: Session = Depends(get_db)):
     _require_author(db, payload.author_id)   # validate the foreign key first
     book = models.Book(**payload.model_dump())
@@ -136,7 +144,11 @@ def create_book(payload: schemas.BookCreate, db: Session = Depends(get_db)):
     return _to_out(book, None, 0)   # a brand-new book has no reviews
 
 
-@router.patch("/{book_id}", response_model=schemas.BookOut)
+@router.patch(
+    "/{book_id}",
+    response_model=schemas.BookOut,
+    dependencies=[Depends(get_current_user)],
+)
 def update_book(book_id: int, payload: schemas.BookUpdate, db: Session = Depends(get_db)):
     book = db.get(models.Book, book_id)
     if book is None:
@@ -154,7 +166,11 @@ def update_book(book_id: int, payload: schemas.BookUpdate, db: Session = Depends
     return get_book(book_id, db)   # reuse get_book to include fresh rating info
 
 
-@router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{book_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_user)],
+)
 def delete_book(book_id: int, db: Session = Depends(get_db)):
     book = db.get(models.Book, book_id)
     if book is None:

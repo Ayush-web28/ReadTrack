@@ -1,32 +1,47 @@
 """
 dependencies.py: reusable pieces that routes can ask for with Depends(...).
 
->>> TEMPORARY (Phase 2 only) <<<
-Real login does not exist yet, so get_current_user() below pretends someone is
-logged in. It reads an optional "X-User-Id" header (default 1) and auto-creates
-a demo user. In Phase 3 this ONE function is replaced by real JWT checking,
-and none of the routes that use it have to change. That is the benefit of
-dependency injection.
+get_current_user() is the "security guard" of the API. Any route that lists it
+as a dependency is PROTECTED: a request without a valid token never reaches the
+route's code, it gets a 401 first.
+
+    @router.post("/books")
+    def create_book(..., user: User = Depends(get_current_user)): ...
+
+(In Phase 2 this function was a temporary stand-in. Because routes only depend
+on the NAME get_current_user, swapping in real JWT checking needed no route changes.)
 """
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from . import models
 from .database import get_db
+from .security import decode_access_token
+
+# Tells FastAPI: "tokens arrive in the Authorization: Bearer <token> header, and
+# clients obtain them from POST /auth/login". It also adds the green "Authorize"
+# button to /docs, so you can log in once and try every protected endpoint.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def get_current_user(
-    x_user_id: int = Header(default=1),   # reads the "X-User-Id" request header
+    token: str = Depends(oauth2_scheme),   # extracts the token from the header (401 if absent)
     db: Session = Depends(get_db),
 ) -> models.User:
-    user = db.get(models.User, x_user_id)
-    if user is None and x_user_id == 1:
-        # First run: create the demo user so the endpoints are usable at once.
-        user = models.User(email="demo@readtrack.dev", name="Demo User", password_hash="!")
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Unknown user")
+    # One generic error for every failure: don't tell an attacker WHY it failed.
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},   # standard hint that Bearer auth is expected
+    )
+
+    user_id = decode_access_token(token)
+    if user_id is None:
+        raise credentials_error
+
+    user = db.get(models.User, user_id)
+    if user is None:          # valid token, but the user was deleted since
+        raise credentials_error
     return user

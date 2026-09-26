@@ -17,9 +17,12 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
+from ..dependencies import get_current_user
 
 # prefix: every route below automatically starts with /authors
 # tags:   groups these routes together in the /docs page
+# Reading is public. Creating, editing and deleting need a valid token:
+# dependencies=[Depends(get_current_user)] on a route runs the security guard first.
 router = APIRouter(prefix="/authors", tags=["Authors"])
 
 
@@ -55,7 +58,12 @@ def list_author_books(author_id: int, db: Session = Depends(get_db)):
 
 
 # status_code=201 means "Created". It is the correct success code for POST.
-@router.post("", response_model=schemas.AuthorOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=schemas.AuthorOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 def create_author(payload: schemas.AuthorCreate, db: Session = Depends(get_db)):
     """
     Create an author. `payload` is the JSON body of the request. FastAPI
@@ -70,7 +78,11 @@ def create_author(payload: schemas.AuthorCreate, db: Session = Depends(get_db)):
     return author
 
 
-@router.patch("/{author_id}", response_model=schemas.AuthorOut)
+@router.patch(
+    "/{author_id}",
+    response_model=schemas.AuthorOut,
+    dependencies=[Depends(get_current_user)],
+)
 def update_author(author_id: int, payload: schemas.AuthorUpdate, db: Session = Depends(get_db)):
     """Partially update an author: only the fields the client sent are changed."""
     author = db.get(models.Author, author_id)
@@ -87,7 +99,11 @@ def update_author(author_id: int, payload: schemas.AuthorUpdate, db: Session = D
     return author
 
 
-@router.delete("/{author_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{author_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_user)],
+)
 def delete_author(author_id: int, db: Session = Depends(get_db)):
     """Delete an author. Refuses if they still have books."""
     author = db.get(models.Author, author_id)

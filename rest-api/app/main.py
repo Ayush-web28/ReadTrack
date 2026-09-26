@@ -16,7 +16,7 @@ from fastapi import FastAPI
 
 from . import models  # noqa: F401  (importing registers the tables with SQLAlchemy)
 from .database import Base, engine
-from .routers import authors, books, reviews, shelf, users
+from .routers import auth, authors, books, reviews, shelf, users
 
 # CREATE TABLE IF NOT EXISTS for every model in models.py.
 # Fine for learning; real projects use migrations (Alembic) to evolve a schema.
@@ -26,10 +26,11 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="ReadTrack REST API",
     description="Track books, authors, reviews and reading progress.",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 # Plug each router in. Their routes are now part of the app.
+app.include_router(auth.router)
 app.include_router(authors.router)
 app.include_router(books.router)
 app.include_router(reviews.router)

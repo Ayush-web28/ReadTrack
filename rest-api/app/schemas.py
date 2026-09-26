@@ -16,7 +16,7 @@ Naming pattern used for each resource (e.g. Author):
 from datetime import datetime
 from typing import Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # The three allowed reading statuses. Literal[...] makes Pydantic reject
 # anything else (e.g. "done") with a 422 automatically.
@@ -38,6 +38,31 @@ class Page(BaseModel, Generic[T]):
     page: int     # current page number (starts at 1)
     limit: int    # page size
     pages: int    # total number of pages
+
+
+# ------------------------------------------------------------------ Users
+class UserCreate(BaseModel):
+    email: EmailStr                                   # validated email format
+    name: str = Field(min_length=1, max_length=100)
+    # bcrypt only uses the first 72 bytes, so we cap the length instead of
+    # silently ignoring the rest.
+    password: str = Field(min_length=8, max_length=72)
+
+
+class UserOut(BaseModel):
+    """Deliberately has NO password / password_hash field."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    name: str
+    created_at: datetime
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 # ---------------------------------------------------------------- Authors

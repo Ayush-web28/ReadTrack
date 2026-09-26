@@ -55,3 +55,24 @@ Changed: `routers/books.py` (filter/sort/paginate/ratings), `routers/authors.py`
 | GET | /users/me/stats | aggregates |
 
 Temporary identity: send header `X-User-Id: 1` (default). Replaced by JWT in Phase 3.
+
+---
+
+# Phase 3: Authentication (JWT)
+
+New: `app/security.py` (bcrypt + JWT), `app/routers/auth.py`. Rewritten: `app/dependencies.py`
+(`get_current_user` now verifies a real token; the `X-User-Id` stand-in is gone).
+
+| Method | URL | Notes |
+|---|---|---|
+| POST | /auth/register | JSON `{email, name, password}` -> 201; 409 if email taken |
+| POST | /auth/login | **form data** `username` (email) + `password` -> `{access_token}` |
+| GET | /users/me | needs token |
+
+Protected: POST/PATCH/DELETE on authors and books, all reviews writes, all of /shelf, /users/me*.
+Public: every GET on authors, books and a book's reviews.
+
+Try it in /docs: register, click **Authorize**, log in with your email as the username, then call any protected endpoint.
+From code: send `Authorization: Bearer <token>`.
+
+Configuration (environment variables): `SECRET_KEY` (set your own outside development), `ACCESS_TOKEN_MINUTES` (default 60).

@@ -16,6 +16,12 @@ from ..dependencies import get_current_user
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+@router.get("/me", response_model=schemas.UserOut)
+def me(user: models.User = Depends(get_current_user)):
+    """Return the logged-in user. A handy way to check that your token works."""
+    return user
+
+
 @router.get("/me/stats", response_model=schemas.StatsOut)
 def my_stats(
     db: Session = Depends(get_db),
