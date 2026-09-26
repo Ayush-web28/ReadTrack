@@ -76,3 +76,19 @@ Try it in /docs: register, click **Authorize**, log in with your email as the us
 From code: send `Authorization: Bearer <token>`.
 
 Configuration (environment variables): `SECRET_KEY` (set your own outside development), `ACCESS_TOKEN_MINUTES` (default 60).
+
+---
+
+# Phase 4: Tests and Docs
+
+New: `tests/` (conftest + 3 test files, 34 tests, ~98% coverage), `pytest.ini`, `requirements-dev.txt`.
+
+Run:
+```
+.venv\Scripts\pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest --cov=app --cov-report=term-missing
+```
+Every test gets a fresh in-memory database via a dependency override (see `tests/conftest.py`).
+The suite takes ~45 s mostly because bcrypt is deliberately slow on every registration.
+
+Read the tests as documentation of the API's rules: each test name describes one behavior.
