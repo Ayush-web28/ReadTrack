@@ -12,7 +12,7 @@ CRUD -> HTTP verb mapping used here:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -31,6 +31,7 @@ router = APIRouter(prefix="/authors", tags=["Authors"])
 def list_authors(
     db: Session = Depends(get_db),
     ids: str | None = Query(default=None, description="Only these author ids, e.g. 1,2,3"),
+    name: str | None = Query(default=None, description="Exact name, case-insensitive"),
 ):
     """List all authors, or only the given ids (batch lookup)."""
     # select(Author) is SQLAlchemy for: SELECT * FROM authors
@@ -38,6 +39,8 @@ def list_authors(
     stmt = select(models.Author).order_by(models.Author.name)
     if (author_ids := parse_ids(ids, "ids")) is not None:
         stmt = stmt.where(models.Author.id.in_(author_ids))
+    if name:
+        stmt = stmt.where(func.lower(models.Author.name) == name.lower())
     return db.execute(stmt).scalars().all()
 
 

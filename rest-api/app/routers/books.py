@@ -81,6 +81,8 @@ def list_books(
     genre: str | None = Query(default=None, description="Exact genre, e.g. scifi"),
     author_id: int | None = Query(default=None),
     # BATCH filters (comma-separated), used by the GraphQL gateway to avoid N+1:
+    # Repeatable exact-title filter: /books?title=Dune&title=Emma (case-insensitive).
+    title: list[str] | None = Query(default=None, description="Exact title; repeat to match several"),
     ids: str | None = Query(default=None, description="Only these book ids, e.g. 1,2,3"),
     author_ids: str | None = Query(default=None, description="Books of any of these authors, e.g. 1,2"),
     search: str | None = Query(default=None, description="Text contained in the title"),
@@ -97,6 +99,8 @@ def list_books(
         stmt = stmt.where(models.Book.author_id == author_id)
     if search:
         stmt = stmt.where(models.Book.title.ilike(f"%{search}%"))   # case-insensitive LIKE
+    if title:
+        stmt = stmt.where(func.lower(models.Book.title).in_([t.lower() for t in title]))
     if (book_ids := parse_ids(ids, "ids")) is not None:
         stmt = stmt.where(models.Book.id.in_(book_ids))               # WHERE id IN (1, 2, 3)
     if (author_id_list := parse_ids(author_ids, "author_ids")) is not None:

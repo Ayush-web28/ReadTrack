@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from app.main import Context
+from app.openlibrary import OpenLibraryClient
 from app.rest_client import RestClient
 from app.schema import schema
 
@@ -44,14 +45,25 @@ def fake():
 
 
 @pytest.fixture()
-def run(fake):
-    """run(query, variables=None, token=None) -> the GraphQL result, using the fake REST API."""
+def fake_ol():
+    """A second fake, standing in for the external Open Library API."""
+    return FakeRest()
+
+
+@pytest.fixture()
+def run(fake, fake_ol):
+    """run(query, variables=None, token=None) -> the GraphQL result, using fake REST + fake Open Library."""
 
     async def _run(query: str, variables: dict | None = None, token: str | None = None):
         http = httpx.AsyncClient(base_url="http://rest", transport=httpx.MockTransport(fake.handler))
-        rest = RestClient(http, f"Bearer {token}" if token else None)
-        result = await schema.execute(query, variable_values=variables, context_value=Context(rest))
+        ol_http = httpx.AsyncClient(base_url="http://ol", transport=httpx.MockTransport(fake_ol.handler))
+        context = Context(
+            rest=RestClient(http, f"Bearer {token}" if token else None),
+            openlibrary=OpenLibraryClient(ol_http),
+        )
+        result = await schema.execute(query, variable_values=variables, context_value=context)
         await http.aclose()
+        await ol_http.aclose()
         return result
 
     return _run

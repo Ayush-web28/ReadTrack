@@ -103,3 +103,14 @@ def test_batch_lookup_by_ids_and_author_ids(client, auth):
     assert [a["name"] for a in client.get(f"/authors?ids={a2}").json()] == ["A2"]
     assert client.get("/authors?ids=1,x").status_code == 422
     assert client.get("/books?ids=abc").status_code == 422
+
+
+def test_exact_title_and_author_name_filters_are_case_insensitive(client, auth):
+    aid = client.post("/authors", json={"name": "Frank Herbert"}, headers=auth).json()["id"]
+    for t in ("Dune", "Dune Messiah", "Emma"):
+        client.post("/books", json={"title": t, "author_id": aid}, headers=auth)
+
+    assert _titles(client, "/books?title=dune") == ["Dune"]                    # exact, not substring
+    assert _titles(client, "/books?title=DUNE&title=emma") == ["Dune", "Emma"]  # repeatable
+    assert [a["id"] for a in client.get("/authors?name=frank herbert").json()] == [aid]
+    assert client.get("/authors?name=Nobody").json() == []

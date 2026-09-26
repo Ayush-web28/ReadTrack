@@ -41,6 +41,11 @@ class ShelfStatus(Enum):
     FINISHED = "finished"
 
 
+def _norm(text: str) -> str:
+    """Normalize for comparing titles/names: ignore case and extra spaces."""
+    return " ".join(text.casefold().split())
+
+
 # ---------------------------------------------------------------- types
 # Each class has a from_rest() helper that converts a REST JSON dict into the
 # GraphQL type. REST uses snake_case keys; we map them onto our fields.
@@ -131,6 +136,21 @@ class BookPage:
     total: int
     page: int
     pages: int
+
+
+@strawberry.type
+class BookSearchResult:
+    """One hit from Open Library (an EXTERNAL API), merged with OUR data."""
+
+    open_library_key: str
+    title: str
+    authors: list[str]
+    first_publish_year: int | None
+    page_count: int | None
+    cover_url: str | None
+    # If this book already exists in our catalog, it is embedded here, so the
+    # client gets our community rating (avgRating, reviewCount) in the same response.
+    in_catalog: Book | None
 
 
 @strawberry.type
@@ -229,6 +249,56 @@ class Query:
         )
 
     @strawberry.field
+    async def search_books(self, info: Info, text: str, limit: int = 10) -> list[BookSearchResult]:
+        """
+        API COMPOSITION: one GraphQL field combines two different APIs.
+          1. Open Library (external): find books matching the text
+          2. ReadTrack REST (ours):   which of those do we already have, and how are they rated?
+        """
+        docs = await info.context.openlibrary.search(text, max(1, min(limit, 20)))
+        if not docs:
+            return []
+
+        # ONE REST call for every title Open Library returned (?title=A&title=B...).
+        titles = list({d["title"] for d in docs if d.get("title")})
+        ours = await info.context.rest.get("/books", params={"title": titles, "limit": 100})
+
+        # Matching by title alone could confuse two different books with the same
+        # name, so we also compare author names. The author loader batches these
+        # lookups into ONE call (the same DataLoader that fixed N+1).
+        candidates = ours["items"]
+        authors = await info.context.loaders.author.load_many([b["author_id"] for b in candidates])
+        catalog: dict[tuple[str, str], dict] = {}
+        for book, author in zip(candidates, authors):
+            if author:
+                catalog[(_norm(book["title"]), _norm(author["name"]))] = book
+
+        results = []
+        for d in docs:
+            names = d.get("author_name") or []
+            match = next(
+                (
+                    catalog[(_norm(d["title"]), _norm(n))]
+                    for n in names
+                    if (_norm(d["title"]), _norm(n)) in catalog
+                ),
+                None,
+            )
+            cover_id = d.get("cover_i")
+            results.append(
+                BookSearchResult(
+                    open_library_key=d["key"],
+                    title=d["title"],
+                    authors=names,
+                    first_publish_year=d.get("first_publish_year"),
+                    page_count=d.get("number_of_pages_median"),
+                    cover_url=f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg" if cover_id else None,
+                    in_catalog=Book.from_rest(match) if match else None,
+                )
+            )
+        return results
+
+    @strawberry.field
     async def author(self, info: Info, id: strawberry.ID) -> Author | None:
         data = await info.context.rest.get(f"/authors/{id}", optional=True)
         return Author.from_rest(data) if data else None
@@ -262,6 +332,41 @@ class Mutation:
             "/auth/login", data={"username": email, "password": password}
         )
         return Token(access_token=data["access_token"], token_type=data["token_type"])
+
+    @strawberry.mutation
+    async def import_book(
+        self,
+        info: Info,
+        title: str,
+        author_name: str,
+        page_count: int | None = None,
+        published_year: int | None = None,
+        genre: str | None = None,
+    ) -> Book:
+        """
+        Add a book found through searchBooks to OUR catalog. Needs a login.
+        Idempotent: importing something that already exists returns the existing book.
+        """
+        rest = info.context.rest
+        # Find the author, or create them.
+        found = await rest.get("/authors", params={"name": author_name})
+        author = found[0] if found else await rest.post("/authors", json={"name": author_name})
+
+        existing = await rest.get("/books", params={"title": [title], "author_id": author["id"]})
+        if existing["items"]:
+            return Book.from_rest(existing["items"][0])
+
+        created = await rest.post(
+            "/books",
+            json={
+                "title": title,
+                "author_id": author["id"],
+                "page_count": page_count,
+                "published_year": published_year,
+                "genre": genre,
+            },
+        )
+        return Book.from_rest(created)
 
     @strawberry.mutation
     async def add_review(
