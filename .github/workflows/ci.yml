@@ -1,0 +1,55 @@
+name: CI
+
+# Runs on every push and pull request to main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rest-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rest-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: rest-api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      # Fails the build if coverage drops below 90%.
+      - run: python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=90
+
+  graphql-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: graphql-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: graphql-api/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

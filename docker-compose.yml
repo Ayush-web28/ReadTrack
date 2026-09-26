@@ -1,0 +1,50 @@
+# Run the whole app:   docker compose up --build
+# Then open http://localhost:8080
+#
+# First, copy .env.example to .env and set SECRET_KEY (see the comment inside).
+
+services:
+  rest-api:
+    build: ./rest-api
+    environment:
+      # Signs the login tokens. The ":?" makes compose stop with a clear message if it is unset.
+      SECRET_KEY: ${SECRET_KEY:?Copy .env.example to .env and set SECRET_KEY}
+    volumes:
+      - readtrack-data:/data          # keeps the SQLite database between runs
+    ports:
+      - "8000:8000"                   # optional: exposes /docs for exploring the REST API directly
+    healthcheck:
+      # The slim image has no curl, so use Python itself.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  graphql-api:
+    build: ./graphql-api
+    environment:
+      REST_API_URL: http://rest-api:8000     # service name = hostname on the compose network
+    depends_on:
+      rest-api:
+        condition: service_healthy
+    ports:
+      - "8001:8001"                   # optional: exposes GraphiQL at http://localhost:8001/graphql
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8001), 2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      graphql-api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  readtrack-data:
