@@ -56,3 +56,31 @@ call). Without DataLoader (Phase 6) it would be one call per shelved book and pe
   panel (see comment in `src/main.jsx`).
 - **Not built yet:** editing or deleting your review from the UI (the REST endpoints exist), and
   frontend tests.
+
+---
+
+# Phase 10: Deploy to Render
+
+Changed: `src/api/rest.js` and `src/api/graphql.js`.
+
+## What changed and why
+Locally (and in Docker), this app calls relative paths (`/api/...`, `/graphql`) and something else
+in front of it (the Vite dev proxy, or nginx) forwards them to the real servers — the browser only
+ever sees one origin, so CORS never comes up. On Render, the frontend is a static site with its own
+`onrender.com` URL, separate from the REST API and GraphQL gateway, so it now calls them directly by
+full URL:
+```js
+const BASE = import.meta.env.VITE_REST_URL || '/api'          // rest.js
+const GRAPHQL_URL = import.meta.env.VITE_GRAPHQL_URL || '/graphql'   // graphql.js
+```
+`VITE_*` variables are read by Vite **at build time** and baked into the built JavaScript — there is no
+runtime "settings" step. `render.yaml` sets both for the Render build; leaving them unset (as in local
+dev) keeps the old relative-path behavior exactly as before.
+
+## Verified
+Built with `VITE_REST_URL`/`VITE_GRAPHQL_URL` pointing at two other `localhost` ports and served the
+build with `vite preview` on a third port, so the browser treated all three as genuinely different
+origins — the same situation as three separate Render services. Registering an account (REST, a
+cross-origin `POST`) and loading the dashboard (GraphQL, a cross-origin `POST`) both worked with no
+console/CORS errors. An actual Render deploy was not tested (no account was available while building
+this); see the repo root `README.md` for the deploy steps and what to check afterward.

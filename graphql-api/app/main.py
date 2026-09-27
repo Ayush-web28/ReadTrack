@@ -10,10 +10,12 @@ To call protected fields (me, addReview...) add a header in GraphiQL's
 "Headers" tab:   {"Authorization": "Bearer <token from the login mutation>"}
 """
 
+import os
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from strawberry.fastapi import BaseContext, GraphQLRouter
 
 from .loaders import Loaders
@@ -55,5 +57,10 @@ async def get_context(request: Request) -> Context:
     )
 
 
+# CORS: lets the frontend (a different origin in production) call this gateway
+# directly from the browser. See the matching comment in rest-api/app/main.py.
+origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+
 app = FastAPI(title="ReadTrack GraphQL Gateway", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 app.include_router(GraphQLRouter(schema, context_getter=get_context), prefix="/graphql")

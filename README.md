@@ -37,6 +37,42 @@ flowchart LR
 Python 3.13, FastAPI, SQLAlchemy 2, Pydantic 2, PyJWT, bcrypt, Strawberry GraphQL, httpx,
 React 19, Vite, React Router, pytest, Docker Compose, nginx, GitHub Actions.
 
+## Deploy to Render (free tier)
+
+One Blueprint (`render.yaml`) deploys all three services plus a Postgres database.
+
+1. Push this repo to your own GitHub account (it must be a repo Render can see).
+2. On [render.com](https://dashboard.render.com): **New** → **Blueprint** → pick this repo → **Apply**.
+   Render reads `render.yaml` and creates four resources: `readtrack-db` (Postgres), `readtrack-rest-api`,
+   `readtrack-graphql-api`, and `readtrack-frontend`.
+3. Wait for all three services to show **Live** (the first build takes a few minutes each).
+4. Open the URL Render gives `readtrack-frontend`.
+
+**If a name was already taken:** `render.yaml` assumes each service gets the exact URL
+`https://<service-name>.onrender.com`. If Render had to rename one (you'll see this on its page,
+e.g. `readtrack-rest-api-a1b2`), some other services still have the old URL baked in. Fix it by
+updating the environment variable that points at it, then manually redeploying the services you changed:
+   - Renamed `readtrack-rest-api` → update `REST_API_URL` on `readtrack-graphql-api` and
+     `VITE_REST_URL` on `readtrack-frontend`.
+   - Renamed `readtrack-graphql-api` → update `VITE_GRAPHQL_URL` on `readtrack-frontend`.
+   - Renamed `readtrack-frontend` → update `CORS_ORIGINS` on both `readtrack-rest-api` and
+     `readtrack-graphql-api`.
+   `VITE_*` variables are baked in at **build time**, so `readtrack-frontend` needs a fresh deploy
+   (not just a restart) after changing one.
+
+**Free-tier behavior to expect** (this is Render, not a bug in the app):
+   - Each free web service **spins down after 15 minutes idle** and takes about a minute to wake up
+     on the next request — the first click after a quiet period will feel slow.
+   - The free Postgres database **expires 30 days after creation**. Before then, either upgrade it
+     or note that your data will need re-entering after it's recreated.
+   - 750 free instance-hours are shared per month across your free services.
+
+**This has not been run against a live Render account** (no account was available while building this),
+though the individual pieces were verified locally: the Postgres connection-string rewrite in
+`rest-api/app/database.py`, CORS between three different `localhost` ports standing in for three Render
+origins, and the `render.yaml` syntax against Render's own docs. Treat the first deploy as the real test,
+and see [Known limitations](#known-limitations-deliberate-scope-cuts) below.
+
 ## Run it with Docker
 ```bash
 cp .env.example .env        # then set SECRET_KEY inside (the file explains how)
@@ -122,10 +158,17 @@ cd frontend    && npm run build
 - **One generic error for bad logins** so the endpoint cannot be used to discover which emails have accounts.
 - **Deleting is conservative:** authors with books and books with reviews or shelf entries return `409` instead of leaving orphans.
 - **Whitelisted sorting** (`sort=` only accepts known columns) instead of passing user input to the database.
-- **Dev proxy / nginx** give the browser a single origin, so no CORS configuration is needed.
+- **Dev proxy / nginx / Render** give the browser one origin per environment where possible (dev, Docker);
+  on Render the three services are separate origins, so `CORSMiddleware` explicitly allows the frontend's
+  origin instead (see `CORS_ORIGINS` in both Python services' `main.py`).
+- **One database file works two ways.** `rest-api/app/database.py` rewrites a Postgres URL's scheme
+  (`postgres://` → `postgresql+psycopg://`) and only passes SQLite's `check_same_thread` flag when the
+  URL is actually SQLite, so the same code runs against a local file or Render's Postgres.
 
 ## Known limitations (deliberate scope cuts)
-- SQLite with `create_all`, no migrations (Alembic would be the next step). Data model changes require deleting the database file.
+- No migrations (Alembic would be the next step): both SQLite and Postgres use plain `create_all`,
+  so a data model change means dropping the database (deleting the file locally, or recreating the
+  Render Postgres instance).
 - Access tokens only (60 minutes, no refresh tokens) and stored in `localStorage`; the trade-off is documented in `frontend/src/api/token.js`.
 - `Book.reviews` is still one REST call per book (needs a bulk reviews endpoint to batch).
 - No GraphQL subscriptions, query-depth limits or rate limiting.
@@ -139,5 +182,6 @@ readtrack/
 ├── graphql-api/    Strawberry gateway, tests, NOTES.md (phases 5-7)
 ├── frontend/       React app, NOTES.md (phase 8)
 ├── docker-compose.yml, .env.example, .github/workflows/ci.yml   (phase 9)
+├── render.yaml     Render Blueprint: deploys everything above in one click (phase 10)
 ```
 Every file is commented to explain the concept it demonstrates. Each `NOTES.md` has a suggested reading order.

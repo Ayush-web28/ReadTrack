@@ -1,0 +1,85 @@
+# Render Blueprint: deploys all three services (and a database) in one go.
+# https://render.com/docs/blueprint-spec
+#
+# On render.com: New -> Blueprint -> pick this repo -> Apply.
+# Read the "Deploy to Render" section in README.md before applying it, in
+# particular the note about the three service names below possibly needing to
+# change if they are already taken by someone else on Render.
+
+databases:
+  # Free Postgres. SQLite (used locally) cannot be used on Render's free web
+  # services: their filesystem is wiped on every restart or redeploy, which
+  # would erase a SQLite file. Postgres runs as its own persistent service.
+  # NOTE: a free Render Postgres expires 30 days after creation (see README).
+  - name: readtrack-db
+    plan: free
+    databaseName: readtrack
+    user: readtrack
+
+services:
+  # ---------------------------------------------------------------- REST API
+  - type: web
+    name: readtrack-rest-api
+    runtime: python
+    plan: free
+    rootDir: rest-api                      # this service's files live in rest-api/
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /                      # Render polls this to confirm the service is up
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: SECRET_KEY
+        generateValue: true                 # Render generates and stores a random secret
+      - key: DATABASE_URL
+        fromDatabase:
+          name: readtrack-db
+          property: connectionString        # Render fills in the real Postgres URL
+      - key: CORS_ORIGINS
+        # Must list the frontend's real URL. Update this (and redeploy) if
+        # Render assigns a different URL than the one assumed here.
+        value: https://readtrack-frontend.onrender.com,http://localhost:5173
+
+  # ---------------------------------------------------------------- GraphQL gateway
+  - type: web
+    name: readtrack-graphql-api
+    runtime: python
+    plan: free
+    rootDir: graphql-api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /graphql               # GraphiQL answers GET here with 200
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      # The gateway has no database; every resolver calls the REST API above.
+      # Update this if readtrack-rest-api ends up with a different URL.
+      - key: REST_API_URL
+        value: https://readtrack-rest-api.onrender.com
+      - key: CORS_ORIGINS
+        value: https://readtrack-frontend.onrender.com,http://localhost:5173
+
+  # ---------------------------------------------------------------- Frontend
+  - type: web
+    name: readtrack-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      # Baked into the build by Vite (see frontend/src/api/rest.js and graphql.js).
+      # Update these (and trigger a rebuild) if the two services above get
+      # different URLs than assumed here.
+      - key: VITE_REST_URL
+        value: https://readtrack-rest-api.onrender.com
+      - key: VITE_GRAPHQL_URL
+        value: https://readtrack-graphql-api.onrender.com/graphql
+    routes:
+      # Client-side routing (React Router): every path that is not a real
+      # file (e.g. /books/7) should still load index.html, and the app then
+      # shows the right page. Without this, refreshing on /books/7 gives a 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html

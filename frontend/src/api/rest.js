@@ -6,12 +6,19 @@
       rest('POST', '/books/7/reviews', { json: { rating: 5 } })
       rest('POST', '/auth/login', { form: { username, password } })
 
-  The "/api" prefix is added here; the Vite dev proxy (vite.config.js) strips it
-  and forwards the call to the REST server.
+  BASE URL: in development and in the Docker/nginx setup, requests go to the
+  relative path "/api/..." and something else (the Vite dev proxy, or nginx)
+  forwards them to the real REST server; that avoids CORS entirely, since the
+  browser only ever sees one origin. On Render, the frontend and the REST API
+  are two different origins, so we call the REST API directly instead, using
+  its full URL from the VITE_REST_URL build-time environment variable (the
+  REST API allows this origin via CORS; see rest-api/app/main.py).
 */
 
 import { logRequest } from '../netlog'
 import { getToken, notifyUnauthorized } from './token'
+
+const BASE = import.meta.env.VITE_REST_URL || '/api'
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -37,7 +44,7 @@ export async function rest(method, path, { json, form, params } = {}) {
     if (value !== undefined && value !== null && value !== '') query.set(key, value)
   })
   const qs = query.toString()
-  const url = `/api${path}${qs ? `?${qs}` : ''}`
+  const url = `${BASE}${path}${qs ? `?${qs}` : ''}`
 
   const headers = {}
   const token = getToken()

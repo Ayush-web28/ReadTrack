@@ -13,6 +13,10 @@ import { logRequest } from '../netlog'
 import { ApiError } from './rest'
 import { getToken, notifyUnauthorized } from './token'
 
+// Same idea as api/rest.js: "/graphql" (dev proxy / nginx) locally, the
+// gateway's full URL (VITE_GRAPHQL_URL) when the frontend is a separate origin.
+const GRAPHQL_URL = import.meta.env.VITE_GRAPHQL_URL || '/graphql'
+
 // "query Dashboard {" -> "Dashboard";  otherwise the first field name.
 function operationLabel(query) {
   const named = query.match(/(?:query|mutation)\s+(\w+)/)
@@ -30,7 +34,7 @@ export async function gql(query, variables = {}) {
   const started = performance.now()
   let response
   try {
-    response = await fetch('/graphql', {
+    response = await fetch(GRAPHQL_URL, {
       method: 'POST',
       headers,
       body: JSON.stringify({ query, variables }),

@@ -12,7 +12,10 @@ Run the server (from the rest-api folder):
 Then open  http://127.0.0.1:8000/docs  for interactive, auto-generated docs.
 """
 
+import os
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401  (importing registers the tables with SQLAlchemy)
 from .database import Base, engine
@@ -27,6 +30,19 @@ app = FastAPI(
     title="ReadTrack REST API",
     description="Track books, authors, reviews and reading progress.",
     version="0.3.0",
+)
+
+# CORS (Cross-Origin Resource Sharing): by default a browser blocks JavaScript
+# on one origin (e.g. https://readtrack-frontend.onrender.com) from reading
+# responses from another origin (this API's own onrender.com URL). This
+# middleware tells the browser which origins are allowed to call us.
+# CORS_ORIGINS is a comma-separated list, e.g. "https://readtrack-frontend.onrender.com,http://localhost:5173".
+origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=["*"],
+    allow_headers=["*"],   # includes "Authorization", for the JWT
 )
 
 # Plug each router in. Their routes are now part of the app.

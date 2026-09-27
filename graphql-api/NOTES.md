@@ -134,3 +134,19 @@ After importing, `searchBooks` shows `inCatalog` filled in, and reviews change `
 - **Testing without the network:** both APIs are faked with `httpx.MockTransport`, so the whole suite
   runs offline in under a second.
 - **Reused machinery:** the author DataLoader from Phase 6 also batches the matching step here.
+
+---
+
+# Phase 10: Deploy to Render
+
+Changed: `app/main.py` (CORS). `REST_API_URL` (already existed, see `rest_client.py`) is set in
+`render.yaml` to the REST API's Render URL instead of `http://127.0.0.1:8000`; no code change needed
+there, it was already read from an environment variable.
+
+Same reasoning as `rest-api/NOTES.md`: on Render, the frontend calls this gateway directly from the
+browser (a different origin), so `CORS_ORIGINS` allow-lists it. This is unrelated to `REST_API_URL`: this
+server always calls the REST API itself over plain server-to-server HTTP, which CORS never applies to
+(CORS is a browser rule). Verified end-to-end against a real REST API and a real Open Library, and, for
+the CORS change specifically, from a built frontend on a different `localhost` port than this gateway
+(see `rest-api/NOTES.md` Phase 10 for the exact setup). Deploying an actual Render account was not
+possible while building this.

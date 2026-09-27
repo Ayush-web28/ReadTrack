@@ -92,3 +92,30 @@ Every test gets a fresh in-memory database via a dependency override (see `tests
 The suite takes ~45 s mostly because bcrypt is deliberately slow on every registration.
 
 Read the tests as documentation of the API's rules: each test name describes one behavior.
+
+---
+
+# Phase 10: Deploy to Render
+
+Changed: `app/database.py` (works with Postgres, not only SQLite), `app/main.py` (CORS), `requirements.txt`
+(added `psycopg[binary]`). New: `render.yaml` at the repo root.
+
+## Why these changes
+- **Postgres, not SQLite, in production.** A free Render web service's disk is wiped on every restart or
+  redeploy, so a SQLite file there loses its data. `render.yaml` provisions a free Postgres database and
+  points `DATABASE_URL` at it. `database.py` rewrites `postgres://` to `postgresql+psycopg://` (the driver
+  name SQLAlchemy 2.x needs) and only passes SQLite's `check_same_thread` option when the URL is actually
+  SQLite. Locally, nothing changes: no `DATABASE_URL` set → the same SQLite file as before.
+- **CORS.** On Render, the frontend and this API are different origins (different `onrender.com`
+  subdomains), so the browser blocks the frontend's JavaScript from reading our responses unless we say
+  otherwise. `CORS_ORIGINS` (comma-separated) lists which origins may call this API.
+
+## Verified without a live Render account
+- `create_engine` on a fake `postgresql+psycopg://` URL resolves the psycopg driver with no error
+  (engine creation does not connect; verified with `pytest` still green, 36 tests, 98% coverage).
+- Full cross-origin test: this API on `:8000`, the gateway on `:8001`, and a built frontend on `:4173`
+  (three different `localhost` ports, standing in for three Render origins), with `CORS_ORIGINS` set to
+  the frontend's port. Register, login, and a GraphQL dashboard query all worked from the browser with no
+  CORS errors — the same shape of request Render will make in production.
+- Not verified: an actual deploy (no Render account available while building this). See the repo root
+  `README.md`'s "Deploy to Render" section for the setup steps and what to check after a real deploy.
